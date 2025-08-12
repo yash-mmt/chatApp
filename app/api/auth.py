@@ -8,6 +8,8 @@ from app.database import get_db
 from datetime import timedelta
 from app.config import settings
 from app.models.chat import User
+from fastapi.security import OAuth2PasswordBearer
+from app.core.security import verify_token
 
 router = APIRouter()
 
@@ -31,3 +33,35 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     access_token_expires = timedelta(minutes=settings.jwt_expire_minutes)
     access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme), 
+    db: Session = Depends(get_db)
+) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        email = verify_token(token)
+        if email is None:
+            raise credentials_exception
+        user = db.query(User).filter(User.email == email).first()
+        if user is None:
+            raise credentials_exception
+        return user
+    except Exception as e:
+        raise credentials_exception
+
+@router.get("/me", response_model=UserResponse)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    """
+    Get current user information
+    """
+    return current_user

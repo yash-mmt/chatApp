@@ -67,3 +67,5 @@ coverage.xml
 # macOS / Linux
 .DS_Store
 Thumbs.db
+
+uploads/

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastAPI WebSocket Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #auth-controls {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        #chat-controls {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: none;
+        }
+        #chat-container {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            height: 500px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        #message-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        #message-input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            padding: 12px 24px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        #login-button {
+            background-color: #4CAF50;
+        }
+        #login-button:hover {
+            background-color: #45a049;
+        }
+        #register-button {
+            background-color: #2196F3;
+        }
+        #register-button:hover {
+            background-color: #0b7dda;
+        }
+        #connect-button, #send-button {
+            background-color: #4CAF50;
+        }
+        #connect-button:hover, #send-button:hover {
+            background-color: #45a049;
+        }
+        #disconnect-button {
+            background-color: #f44336;
+            display: none;
+        }
+        #disconnect-button:hover {
+            background-color: #d32f2f;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            max-width: 70%;
+            position: relative;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .own-message {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            align-self: flex-end;
+            margin-left: 30%;
+        }
+        .other-message {
+            background-color: #f1f1f1;
+            border-left: 4px solid #9e9e9e;
+            align-self: flex-start;
+            margin-right: 30%;
+        }
+        .info-message {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4CAF50;
+            text-align: center;
+            font-style: italic;
+            align-self: center;
+            max-width: 90%;
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+        .sender-name {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .own-message .sender-name {
+            color: #0d47a1;
+        }
+        .message-time {
+            color: #7f8c8d;
+            font-size: 12px;
+        }
+        .message-content {
+            font-size: 16px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="password"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .status.connected {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status.disconnected {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <h1>FastAPI WebSocket Chat</h1>
+    
+    <!-- Authentication Section -->
+    <div id="auth-controls">
+        <div class="form-group">
+            <label for="login-email">Email:</label>
+            <input type="text" id="login-email" placeholder="Enter your email">
+        </div>
+        <div class="form-group">
+            <label for="login-password">Password:</label>
+            <input type="password" id="login-password" placeholder="Enter your password">
+        </div>
+        <div class="button-group">
+            <button id="login-button">Login</button>
+            <button id="register-button">Register</button>
+        </div>
+        <div id="auth-status" class="status disconnected">Not authenticated</div>
+    </div>
+    
+    <!-- Chat Section (hidden until authenticated) -->
+    <div id="chat-controls">
+        <div class="form-group">
+            <label for="room-id">Room ID:</label>
+            <input type="number" id="room-id" value="1" min="1">
+        </div>
+        <div class="button-group">
+            <button id="connect-button">Connect to Chat</button>
+            <button id="disconnect-button">Disconnect</button>
+        </div>
+        <div id="connection-status" class="status disconnected">Disconnected</div>
+    </div>
+    
+    <div id="chat-container"></div>
+    
+    <div id="message-controls">
+        <input type="text" id="message-input" placeholder="Type your message..." disabled>
+        <button id="send-button" disabled>Send</button>
+    </div>
+
+    <script>
+        // Global variables
+        let socket;
+        let authToken = localStorage.getItem('jwtToken');
+        let currentUser = null;
+        let currentRoomId = 1;
+        let isConnected = false;
+        
+        // DOM elements
+        const authControls = document.getElementById('auth-controls');
+        const chatControls = document.getElementById('chat-controls');
+        const chatContainer = document.getElementById('chat-container');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const connectButton = document.getElementById('connect-button');
+        const disconnectButton = document.getElementById('disconnect-button');
+        const authStatus = document.getElementById('auth-status');
+        const connectionStatus = document.getElementById('connection-status');
+        
+        // Event listeners
+        document.getElementById('login-button').addEventListener('click', login);
+        document.getElementById('register-button').addEventListener('click', register);
+        connectButton.addEventListener('click', connectToChat);
+        disconnectButton.addEventListener('click', disconnectFromChat);
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Check if already logged in
+        if (authToken) {
+            verifyToken();
+        }
+        
+        // Authentication functions
+        async function login() {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            
+            if (!email || !password) {
+                alert('Please enter both email and password');
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://127.0.0.1:8000/users/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Login failed');
+                }
+                
+                const data = await response.json();
+                authToken = data.access_token;
+                localStorage.setItem('jwtToken', authToken);
+                
+                // Verify token to get user details
+                await verifyToken();
+                
+            } catch (error) {
+                alert(error.message);
+                console.error('Login error:', error);
+            }
+        }
+        
+        async function register() {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            
+            if (!email || !password) {
+                alert('Please enter both email and password');
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://127.0.0.1:8000/users/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password,
+                        username: email.split('@')[0] // Simple username from email
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Registration failed');
+                }
+                
+                alert('Registration successful! Please login.');
+                
+            } catch (error) {
+                alert(error.message);
+                console.error('Registration error:', error);
+            }
+        }
+        
+        async function verifyToken() {
+            try {
+                const response = await fetch('http://127.0.0.1:8000/users/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Token verification failed');
+                }
+                
+                const userData = await response.json();
+                currentUser = userData;
+                
+                // Update UI
+                authStatus.textContent = `Logged in as ${userData.email}`;
+                authStatus.className = 'status connected';
+                authControls.style.display = 'none';
+                chatControls.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Token verification error:', error);
+                localStorage.removeItem('jwtToken');
+                authToken = null;
+                authStatus.textContent = 'Not authenticated';
+                authStatus.className = 'status disconnected';
+            }
+        }
+        
+        // WebSocket functions
+        function connectToChat() {
+            currentRoomId = parseInt(document.getElementById('room-id').value);
+            
+            if (isNaN(currentRoomId)) {
+                alert('Please enter a valid room ID');
+                return;
+            }
+            
+            if (socket) {
+                socket.close();
+            }
+            
+            // Connect to WebSocket with token
+            socket = new WebSocket(`ws://localhost:8000/ws?token=${authToken}`);
+            
+            socket.onopen = function() {
+                isConnected = true;
+                connectionStatus.textContent = `Connected to room ${currentRoomId}`;
+                connectionStatus.className = 'status connected';
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                connectButton.disabled = true;
+                disconnectButton.style.display = 'block';
+                
+                addInfoMessage("Connected to chat server");
+                
+                // Join the room
+                socket.send(JSON.stringify({
+                    type: "join_room",
+                    room_id: currentRoomId
+                }));
+                
+                addInfoMessage(`Joined room ${currentRoomId}`);
+            };
+            
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                console.log("Received message:", data);
+                
+                if (data.type === "message") {
+                    const isOwnMessage = data.sender_id === currentUser.id;
+                    if (!isOwnMessage) {
+                        addMessage(
+                            data.content, 
+                            false,
+                            data.sender_name || `User ${data.sender_id}`,
+                            data.timestamp ? new Date(data.timestamp) : new Date()
+                        );
+                    }
+                } else if (data.type === "notification") {
+                    addInfoMessage(data.content);
+                }
+            };
+            
+            socket.onclose = function(event) {
+                isConnected = false;
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'status disconnected';
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                connectButton.disabled = false;
+                disconnectButton.style.display = 'none';
+                
+                if (event.wasClean) {
+                    addInfoMessage(`Connection closed: ${event.reason || 'No reason provided'}`);
+                } else {
+                    addInfoMessage('Connection lost. Try reconnecting.');
+                }
+            };
+            
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addInfoMessage(`Error: ${error.message || 'Unknown error occurred'}`);
+            };
+        }
+        
+        function disconnectFromChat() {
+            if (socket) {
+                socket.close();
+            }
+        }
+        
+        function sendMessage() {
+            const content = messageInput.value.trim();
+            
+            if (content && socket && socket.readyState === WebSocket.OPEN) {
+                // Add the message immediately to the UI (right side)
+                addMessage(
+                    content,
+                    true,
+                    "You",
+                    new Date()
+                );
+                
+                // Send to server
+                socket.send(JSON.stringify({
+                    type: "message",
+                    content: content,
+                    room_id: currentRoomId
+                }));
+                
+                messageInput.value = '';
+                messageInput.focus();
+            }
+        }
+        
+        // UI Helper functions
+        function addMessage(text, isOwnMessage, senderName, timestamp) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isOwnMessage ? 'own-message' : 'other-message'}`;
+            
+            // Message header with sender name and timestamp
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'message-header';
+            
+            const senderDiv = document.createElement('div');
+            senderDiv.className = 'sender-name';
+            senderDiv.textContent = senderName;
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'message-time';
+            timeDiv.textContent = formatTime(timestamp);
+            
+            headerDiv.appendChild(senderDiv);
+            headerDiv.appendChild(timeDiv);
+            
+            // Message content
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = text;
+            
+            // Assemble the message
+            messageDiv.appendChild(headerDiv);
+            messageDiv.appendChild(contentDiv);
+            
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function addInfoMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message info-message';
+            messageDiv.textContent = text;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function formatTime(date) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+    </script>
+</body>
+</html>
